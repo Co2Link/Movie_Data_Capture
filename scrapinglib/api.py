@@ -201,7 +201,8 @@ class Scraping:
             if source in sources:
                 sources.insert(0, sources.pop(sources.index(source)))
             return sources
-
+        
+        # Prioritize Msin
         if len(sources) <= len(self.adult_full_sources):
             # if the input file name matches certain rules,
             # move some web service to the beginning of the list
@@ -211,27 +212,27 @@ class Scraping:
                 sources = insert(sources, "carib")
             elif "item" in file_number or "GETCHU" in file_number.upper():
                 sources = ["getchu"]
-            elif "rj" in lo_file_number or "vj" in lo_file_number:
-                sources = ["dlsite"]
-            elif re.search(r"[\u3040-\u309F\u30A0-\u30FF]+", file_number):
-                sources = ["dlsite", "getchu"]
+            # elif "rj" in lo_file_number or "vj" in lo_file_number:
+            #     sources = ["dlsite"]
+            # elif re.search(r"[\u3040-\u309F\u30A0-\u30FF]+", file_number):
+            #     sources = ["dlsite", "getchu"]
             elif "pcolle" in sources and "pcolle" in lo_file_number:
                 sources = ["pcolle"]
             elif "fc2" in lo_file_number:
-                sources = ["fc2", "avsox", "msin"]
-            elif (re.search(r"\d+\D+-", file_number) or "siro" in lo_file_number):
-                if "mgstage" in sources:
-                    sources = insert(sources, "mgstage")
-            elif "gcolle" in sources and (re.search("\d{6}", file_number)):
-                sources = insert(sources, "gcolle")
-            elif re.search(r"^\d{5,}", file_number) or \
-                    (re.search(r"^\d{6}-\d{3}", file_number)) or "heyzo" in lo_file_number:
-                sources = ["avsox", "carib", "caribpr", "javbus", "xcity", "javdb"]
-            elif re.search(r"^[a-z0-9]{3,}$", lo_file_number):
-                if "xcity" in sources:
-                    sources = insert(sources, "xcity")
-                if "madou" in sources:
-                    sources = insert(sources, "madou")
+                sources = ["msin", "fc2", "avsox"]
+            # elif (re.search(r"\d+\D+-", file_number) or "siro" in lo_file_number):
+            #     if "mgstage" in sources:
+            #         sources = insert(sources, "mgstage")
+            # elif "gcolle" in sources and (re.search("\d{6}", file_number)):
+            #     sources = insert(sources, "gcolle")
+            # elif re.search(r"^\d{5,}", file_number) or \
+            #         (re.search(r"^\d{6}-\d{3}", file_number)) or "heyzo" in lo_file_number:
+            #     sources = ["avsox", "carib", "caribpr", "javbus", "xcity", "javdb"]
+            # elif re.search(r"^[a-z0-9]{3,}$", lo_file_number):
+            #     if "xcity" in sources:
+            #         sources = insert(sources, "xcity")
+            #     if "madou" in sources:
+            #         sources = insert(sources, "madou")
 
         # check sources in func_mapping
         todel = []

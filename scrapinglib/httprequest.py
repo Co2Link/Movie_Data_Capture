@@ -32,7 +32,8 @@ def get(url: str, cookies=None, ua: str = None, extra_headers=None, return_type:
             elif return_type == "content":
                 return result.content
             else:
-                result.encoding = encoding or result.apparent_encoding
+                # Fix encoding issue
+                result.encoding = encoding or result.encoding or result.apparent_encoding
                 return result.text
         except Exception as e:
             if config.getInstance().debug():

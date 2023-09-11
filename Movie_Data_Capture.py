@@ -448,6 +448,9 @@ def create_data_and_move(movie_path: str, zero_op: bool, no_net_op: bool, oCC):
     # Normalized number, eg: 111xxx-222.mp4 -> xxx-222.mp4
     debug = config.getInstance().debug()
     n_number = get_number(debug, os.path.basename(movie_path))
+    # Remove trailing hyphen
+    if n_number[-1] == '-':
+        n_number = n_number[:-1]
     movie_path = os.path.abspath(movie_path)
 
     if debug is True:
@@ -599,7 +602,6 @@ def main(args: tuple) -> Path:
         # some OS no OpenCC cpython, try opencc-python-reimplemented.
         # pip uninstall opencc && pip install opencc-python-reimplemented
         oCC = None if ccm == 0 else OpenCC('t2s' if ccm == 1 else 's2t')
-
     if not search == '':
         search_list = search.split(",")
         for i in search_list:
