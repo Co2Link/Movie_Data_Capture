@@ -7,6 +7,7 @@ import inspect
 from lxml import etree
 from urllib.parse import urljoin
 from .parser import Parser
+from .httprequest import request_session 
 
 class Javbus(Parser):
     
@@ -52,7 +53,22 @@ class Javbus(Parser):
                 self.detailurl = mirror_url + number
                 self.htmlcode = self.getHtml(self.detailurl)
             if self.htmlcode == 404:
-                return 404
+                # Try using search function
+                print('[!] Using search function')
+                session = request_session(cookies=self.cookies, proxies=self.proxies, verify=self.verify)
+                htmlcode = session.get(f'https://www.javbus.com/ja/search/{number}').text
+                htmltree = etree.HTML(htmlcode)
+                target_number = self.getTreeAll(htmltree, '//*[@id="waterfall"]/div[1]/a/div[2]/span/date[1]/text()')[0]
+                if 'No Result Found！' in htmlcode:
+                    return 404
+                if target_number.lower() != self.number.lower():
+                    print('[!] First search result do not match the number')
+                    return 404
+                self.detailurl = self.getTreeAll(htmltree, '//*[@id="waterfall"]/div[1]/a/@href')[0]
+                self.htmlcode = self.getHtml(self.detailurl)
+                if self.htmlcode == 404:
+                    return 404
+
             htmltree = etree.fromstring(self.htmlcode,etree.HTMLParser())
             result = self.dictformat(htmltree)
             return result
