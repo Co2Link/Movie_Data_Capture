@@ -34,8 +34,8 @@ class Msin(Parser):
     def search(self, number: str):
         self.number = number.lower()
         is_fc2 = False
-        if 'fc2' in number:
-            self.number = 'fc2-ppv-' + re.sub(r'[^\d]+', '', self.number)
+        if 'fc2' in self.number:
+            self.number = "fc2-ppv-" + max(re.findall(r'\d+', self.number), key=len)
             is_fc2 = True
         elif any([prefix in self.number for prefix in ['ibw', 'aoz']]):
             if self.number[-1] == 'z':
@@ -43,28 +43,32 @@ class Msin(Parser):
         elif re.match(r'^[\d]+-[\d]+$', self.number):
             self.number = self.number.replace('-', '_')
         self.cookies = {"age": "off"}
+        self.session = request_session(cookies=self.cookies, proxies=self.proxies, verify=self.verify)
         # search domestic
         if not is_fc2:
             print('[!] Search domestic')
             self.detailurl = f'https://db.msin.jp/branch/search?sort=jp.movie&str={self.number}'
-            session = request_session(cookies=self.cookies, proxies=self.proxies, verify=self.verify)
-            htmlcode = session.get(self.detailurl).text
+            htmlcode = self.session.get(self.detailurl).text
         # search oversea
         if is_fc2 or 'No Results' in htmlcode or'Not Found' in htmlcode:
             print('[!] Search oversea')
             self.detailurl = f'https://db.msin.jp/branch/search?sort=movie&str={self.number}'
-            session = request_session(cookies=self.cookies, proxies=self.proxies, verify=self.verify)
-            htmlcode = session.get(self.detailurl).text
+            htmlcode = self.session.get(self.detailurl).text
 
         htmltree = etree.HTML(htmlcode)
         # mutiple search results
         if '上限99件' in htmlcode:
             print('[!] Mutiple results!')
-            target_url = self.getTreeAll(htmltree, '//*[@id="bottom_content"]/div/div/div/div/div/a/@href')[0]
-            self.detailurl = f'https://db.msin.jp/{target_url}'
-            session = request_session(cookies=self.cookies, proxies=self.proxies, verify=self.verify)
-            htmlcode = session.get(self.detailurl).text
-            htmltree = etree.HTML(htmlcode)
+            unique_names = self.getTreeAll(htmltree, "//*[@id='bottom_content']//span[@class='movie_pn']/text()")
+            if unique_names and len(set(unique_names)) == 1:
+                print('[!] All results point to the same movie, choose the first one as target.')
+                target_url = self.getTreeAll(htmltree, "//*[@id='bottom_content']//a[.//img]/@href")[0]
+                self.detailurl = f'https://db.msin.jp/{target_url}'
+                htmlcode = self.session.get(self.detailurl).text
+                htmltree = etree.HTML(htmlcode)
+            else:
+                print('[!] Not sure which one to choose as result.')
+                return 404
 
         # if title are null, use unsubscribe title
         if super().getTitle(htmltree) == "":
@@ -86,8 +90,7 @@ class Msin(Parser):
     @lru_cache(maxsize=None)
     def getActors(self, htmltree):
         def get_actor_unique_name(actor_url):
-            session = request_session(cookies=self.cookies, proxies=self.proxies, verify=self.verify)
-            htmlcode = session.get(f'https://db.msin.jp{actor_url}').text
+            htmlcode = self.session.get(f'https://db.msin.jp{actor_url}').text
             ret = self.getTreeAll(etree.HTML(htmlcode), '//*[@id="top_content"]/h2/div[2]/span/text()')
             return ret[0] if ret else None
         actors = super().getActors(htmltree)
