@@ -4,7 +4,11 @@ import re
 from lxml import etree
 from .httprequest import request_session
 from .parser import Parser
+from .utils import UniqueNameFinder
 from functools import lru_cache
+from scrapinglib.javbus import Javbus
+import json
+import urllib
 
 
 class Msin(Parser):
@@ -28,8 +32,16 @@ class Msin(Parser):
     # expr_extrafanart = '//*[@class="item-nav"]/ul/li/a/img/@src'
     # expr_extrafanart2 = '//*[@id="cart_quantity"]/table/tr[3]/td/div/a/img/@src'
 
+    
+    def is_not_found(self, htmlcode: str):
+        return 'No Results' in htmlcode or 'Not Found' in htmlcode
+
     def extraInit(self):
+        # for javbus
+        self.specifiedSource = None
+        self.session = request_session(cookies={"age": "off"}, proxies=self.proxies, verify=self.verify)
         self.imagecut = 4
+        self.unique_name_finder = UniqueNameFinder()
 
     def search(self, number: str):
         self.number = number.lower()
@@ -42,18 +54,17 @@ class Msin(Parser):
                 self.number = self.number[:-1]
         elif re.match(r'^[\d]+-[\d]+$', self.number):
             self.number = self.number.replace('-', '_')
-        self.cookies = {"age": "off"}
-        self.session = request_session(cookies=self.cookies, proxies=self.proxies, verify=self.verify)
         # search domestic
         if not is_fc2:
             print('[!] Search domestic')
             self.detailurl = f'https://db.msin.jp/branch/search?sort=jp.movie&str={self.number}'
             htmlcode = self.session.get(self.detailurl).text
         # search oversea
-        if is_fc2 or 'No Results' in htmlcode or'Not Found' in htmlcode:
+        if is_fc2 or self.is_not_found(htmlcode):
             print('[!] Search oversea')
             self.detailurl = f'https://db.msin.jp/branch/search?sort=movie&str={self.number}'
             htmlcode = self.session.get(self.detailurl).text
+            # TODO: fix 年齢確認
 
         htmltree = etree.HTML(htmlcode)
         # mutiple search results
@@ -63,12 +74,14 @@ class Msin(Parser):
             if unique_names and len(set(unique_names)) == 1:
                 print('[!] All results point to the same movie, choose the first one as target.')
                 target_url = self.getTreeAll(htmltree, "//*[@id='bottom_content']//a[.//img]/@href")[0]
-                self.detailurl = f'https://db.msin.jp/{target_url}'
+                self.detailurl = f'https://db.msin.jp{target_url}'
                 htmlcode = self.session.get(self.detailurl).text
                 htmltree = etree.HTML(htmlcode)
             else:
                 print('[!] Not sure which one to choose as result.')
                 return 404
+        elif self.is_not_found(htmlcode):
+            return 404
 
         # if title are null, use unsubscribe title
         if super().getTitle(htmltree) == "":
@@ -89,19 +102,38 @@ class Msin(Parser):
 
     @lru_cache(maxsize=None)
     def getActors(self, htmltree):
-        def get_actor_unique_name(actor_url):
-            htmlcode = self.session.get(f'https://db.msin.jp{actor_url}').text
-            ret = self.getTreeAll(etree.HTML(htmlcode), '//*[@id="top_content"]/h2/div[2]/span/text()')
-            return ret[0] if ret else None
         actors = super().getActors(htmltree)
         actor_urls = self.getTreeAll(htmltree, '//div[contains(text(),"出演者：")]/following-sibling::div[1]/div/div[@class="performer_text"]/a/@href')
-        ret = []
+        actor_names = []
         for actor_name, actor_url in zip(actors, actor_urls):
-            actor_unique_name = get_actor_unique_name(actor_url)
+            actor_unique_name = self.unique_name_finder.get_actor_unique_name(actor_url)
             if actor_unique_name is None:
                 breakpoint()
-            ret.append(actor_unique_name if actor_unique_name else actor_name)
-        return ret
+            actor_names.append(actor_unique_name if actor_unique_name else actor_name)
+        # There are cases where actor names can be found in Javbus but not in Msin for some movies
+        if not actor_names:
+            print('[!] Try to search in Javbus to retrieve actor names')
+            jav_engine = Javbus()
+            result = jav_engine.scrape(self.number, self)
+            if result != 404:
+                result = json.loads(result)
+                actor_names = result['actor']
+                if actor_names:
+                    print(f'[!] Actor names{actor_names} found in Javbus for {self.number}')
+                    for i in range(len(actor_names)):
+                        name = actor_names[i]
+                        unique_name = self.unique_name_finder.search_actor_unique_name(name)
+                        if unique_name and unique_name != name:
+                            actor_names[i] = unique_name
+                            print(f'[!] Successfully replace {name} with {unique_name}')
+                        elif not unique_name:
+                            print(f'[!] Can not find actor {name} in Msin')
+                            
+        director = self.getDirector(htmltree)
+        if not actor_names and director:
+            print(f'[!] Use director name {director} as actor name')
+            return director
+        return actor_names
 
     def getTags(self, htmltree) -> list:
         return super().getTags(htmltree)

@@ -143,6 +143,8 @@ class Scraping:
                     if self.debug:
                         print(f"[+]Find movie [{number}] metadata on website '{source}'")
                     break
+                else:
+                    print(f"[!] Movie [{number}] data from {source} failed on state check")
             except:
                 continue
 

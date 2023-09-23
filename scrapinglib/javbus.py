@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 
 import re
-import os
 import secrets
-import inspect
 from lxml import etree
 from urllib.parse import urljoin
 from .parser import Parser
 from .httprequest import request_session 
+from .utils import UniqueNameFinder
 
 class Javbus(Parser):
     
@@ -30,6 +29,9 @@ class Javbus(Parser):
     expr_extrafanart = '//div[@id="sample-waterfall"]/a/@href'
     expr_tags = '/html/head/meta[@name="keywords"]/@content'
     expr_uncensored = '//*[@id="navbar"]/ul[1]/li[@class="active"]/a[contains(@href,"uncensored")]'
+
+    def extraInit(self):
+        self.unique_name_finder = UniqueNameFinder()
 
     def search(self, number):
         self.number = number
@@ -58,15 +60,23 @@ class Javbus(Parser):
                 session = request_session(cookies=self.cookies, proxies=self.proxies, verify=self.verify)
                 htmlcode = session.get(f'https://www.javbus.com/ja/search/{number}').text
                 htmltree = etree.HTML(htmlcode)
-                target_number = self.getTreeAll(htmltree, '//*[@id="waterfall"]/div[1]/a/div[2]/span/date[1]/text()')[0]
                 if 'No Result Found！' in htmlcode:
                     return 404
-                if target_number.lower() != self.number.lower():
-                    print('[!] First search result do not match the number')
-                    return 404
-                self.detailurl = self.getTreeAll(htmltree, '//*[@id="waterfall"]/div[1]/a/@href')[0]
-                self.htmlcode = self.getHtml(self.detailurl)
-                if self.htmlcode == 404:
+
+                # Iterate through all search results
+                found = False
+                for i, number in enumerate(self.getTreeAll(htmltree, '//*[@id="waterfall"]/div/a/div[2]/span/date[1]/text()')):
+                    if self.number.lower() in number.lower():
+                        print(f'[!] The {i + 1} result match the number')
+                        found = True
+                        self.detailurl = self.getTreeAll(htmltree, '//*[@id="waterfall"]/div/a/@href')[i]
+                        self.htmlcode = self.getHtml(self.detailurl)
+                        if self.htmlcode == 404:
+                            return 404
+                        break
+                
+                if not found:
+                    print('[!] No search result match the number')
                     return 404
 
             htmltree = etree.fromstring(self.htmlcode,etree.HTMLParser())
@@ -117,7 +127,11 @@ class Javbus(Parser):
         actors = super().getActors(htmltree)
         b=[]
         for i in actors:
-            b.append(i.attrib['title'])
+            name = i.attrib['title']
+            unique_name = self.unique_name_finder.search_actor_unique_name(name)
+            if unique_name and unique_name != name:
+                print(f'[!] Successfully replace {name} with {unique_name}')
+            b.append(unique_name if unique_name else name)
         return b
     
     def getActorPhoto(self, htmltree):
@@ -147,11 +161,11 @@ class Javbus(Parser):
         tags = self.getTreeElement(htmltree, self.expr_tags).split(',')
         return tags[2:]
 
-    def getOutline(self, htmltree):
-        if self.morestoryline:
-            if any(caller for caller in inspect.stack() if os.path.basename(caller.filename) == 'airav.py'):
-                return ''   # 从airav.py过来的调用不计算outline直接返回，避免重复抓取数据拖慢处理速度
-            from .storyline import getStoryline
-            return getStoryline(self.number , uncensored = self.uncensored,
-                                proxies=self.proxies, verify=self.verify)
-        return ''
+    # def getOutline(self, htmltree):
+    #     if self.morestoryline:
+    #         if any(caller for caller in inspect.stack() if os.path.basename(caller.filename) == 'airav.py'):
+    #             return ''   # 从airav.py过来的调用不计算outline直接返回，避免重复抓取数据拖慢处理速度
+    #         from .storyline import getStoryline
+    #         return getStoryline(self.number , uncensored = self.uncensored,
+    #                             proxies=self.proxies, verify=self.verify)
+    #     return ''
